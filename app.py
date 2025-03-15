@@ -89,17 +89,42 @@ st.write("Încărcați o imagine pentru a identifica tipul de insectă")
 # Sidebar pentru încărcarea modelului
 st.sidebar.header("Configurare Model")
 
-# Calea către model
+# Calea către model - folosim calea relativă
 MODEL_PATH = st.sidebar.text_input(
     "Calea către modelul antrenat (.h5)", 
-    value=r"C:\Users\julea\Desktop\Insecte_recunoastere\mobilenet_insect_classifier_20250315-181351.h5"
+    value="./model/mobilenet_insect_classifier.h5"
 )
 
 # Calea către fișierul class_names.json
 CLASS_NAMES_PATH = st.sidebar.text_input(
     "Calea către numele claselor (JSON)",
-    value=r"./class_names.json"
+    value="./model/class_names.json"
 )
+
+# Verificăm dacă fișierele există și altfel încercăm să le găsim
+if not os.path.exists(MODEL_PATH):
+    # Încercăm să găsim orice fișier .h5 în directorul curent sau în subdirectoare
+    h5_files = []
+    for root, dirs, files in os.walk('.'):
+        for file in files:
+            if file.endswith('.h5'):
+                h5_files.append(os.path.join(root, file))
+    
+    if h5_files:
+        MODEL_PATH = h5_files[0]  # Folosim primul model găsit
+        st.sidebar.info(f"Model găsit automat: {MODEL_PATH}")
+
+if not os.path.exists(CLASS_NAMES_PATH):
+    # Încercăm să găsim fișierul class_names.json în directorul curent sau în subdirectoare
+    json_files = []
+    for root, dirs, files in os.walk('.'):
+        for file in files:
+            if file == 'class_names.json':
+                json_files.append(os.path.join(root, file))
+    
+    if json_files:
+        CLASS_NAMES_PATH = json_files[0]  # Folosim primul fișier găsit
+        st.sidebar.info(f"Fișier class_names.json găsit automat: {CLASS_NAMES_PATH}")
 
 # Încărcăm numele claselor din fișierul JSON
 class_names = None
@@ -112,6 +137,9 @@ if os.path.exists(CLASS_NAMES_PATH):
         st.sidebar.error(f"❌ Eroare la încărcarea numelor de clase: {str(e)}")
 else:
     st.sidebar.warning("⚠️ Fișierul cu numele claselor nu a fost găsit. Se vor folosi nume generice.")
+    # Daca nu exista fisierul, cream un demo cu nume generice
+    class_names = ["Albină", "Gândac", "Fluture", "Libelulă", "Furnică", "Țânțar", "Păianjen"]
+    st.sidebar.info("Se folosesc nume de clase demo pentru testare.")
 
 # Încărcare model
 model_loaded = False
@@ -138,7 +166,19 @@ if os.path.exists(MODEL_PATH):
     except Exception as e:
         st.sidebar.error(f"❌ Eroare la încărcarea modelului: {str(e)}")
 else:
-    st.sidebar.warning("⚠️ Introduceți calea corectă către model")
+    st.sidebar.warning("⚠️ Modelul nu a fost găsit. Încercați să verificați calea sau să uploadați modelul în repository.")
+    # Pentru demo, oferim opțiunea de a rula în modul demo
+    if st.sidebar.button("Rulare în mod demo (fără model real)"):
+        st.sidebar.success("✅ Mod demo activat!")
+        model_loaded = True
+        # Cream un model fake pentru demo
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import Dense
+        model = Sequential([Dense(7, activation='softmax', input_shape=(224, 224, 3))])
+        img_size = (224, 224)
+        num_classes = 7
+        if class_names is None or len(class_names) != num_classes:
+            class_names = ["Albină", "Gândac", "Fluture", "Libelulă", "Furnică", "Țânțar", "Păianjen"]
 
 # Zona de încărcare imagine - acum folosim o singură coloană
 st.subheader("Încarcă o imagine")
@@ -155,7 +195,7 @@ else:
     uploaded_file = st.camera_input("Fotografiază o insectă")
 
 # Procesare imagine și predicție
-if uploaded_file is not None and model_loaded:
+if uploaded_file is not None:
     # Citire imagine
     image_pil = Image.open(uploaded_file)
     
@@ -166,44 +206,51 @@ if uploaded_file is not None and model_loaded:
         with image_col:
             st.image(image_pil, caption="Imagine încărcată", use_container_width=True)
     
-    # Buton de analiză
+    # Buton de analiză - mereu vizibil
     analyze_button = st.button("🔍 Identifică insecta", type="primary")
     
     if analyze_button:
-        with st.spinner("Se analizează imaginea..."):
-            # Predicție și aplicare bounding box
-            result_img, predicted_class, confidence, all_predictions = predict_insect(
-                model, image_pil, class_names, img_size
-            )
-            
-            
-            # Card cu rezultate
-            st.markdown(f"""
-            <div style="padding: 20px; border-radius: 10px; background-color: #1a405b; max-width: 600px;">
-                <h3 style="color: #1E88E5; margin-top: 0;">Insectă identificată:</h3>
-                <h2>{predicted_class}</h2>
-                <p>Grad de încredere: <b>{confidence*100:.2f}%</b></p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Info despre insectă
-            st.subheader("Alte predicții posibile:")
-            
-            # Sortăm predicțiile și afișăm top 3
-            sorted_predictions = sorted(
-                [(class_names[i], float(all_predictions[0][i])) for i in range(len(class_names))],
-                key=lambda x: x[1],
-                reverse=True
-            )
-            
-            # Afișăm top 3 predicții
-            for i, (name, prob) in enumerate(sorted_predictions[:3]):
-                st.markdown(f"{i+1}. **{name}**: {prob*100:.2f}%")
-            
-            # Afișăm un grafic cu top 5 predicții (limitat la 600px lățime)
-            st.subheader("Top 5 predicții:")
-            top5_dict = {name: prob for name, prob in sorted_predictions[:5]}
-            chart = st.bar_chart(top5_dict)
+        if model_loaded:
+            with st.spinner("Se analizează imaginea..."):
+                try:
+                    # Predicție și aplicare bounding box
+                    result_img, predicted_class, confidence, all_predictions = predict_insect(
+                        model, image_pil, class_names, img_size
+                    )
+                    
+                    # Card cu rezultate
+                    st.markdown(f"""
+                    <div style="padding: 20px; border-radius: 10px; background-color: #1a405b; max-width: 600px;">
+                        <h3 style="color: #1E88E5; margin-top: 0;">Insectă identificată:</h3>
+                        <h2>{predicted_class}</h2>
+                        <p>Grad de încredere: <b>{confidence*100:.2f}%</b></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Info despre insectă
+                    st.subheader("Alte predicții posibile:")
+                    
+                    # Sortăm predicțiile și afișăm top 3
+                    sorted_predictions = sorted(
+                        [(class_names[i], float(all_predictions[0][i])) for i in range(len(class_names))],
+                        key=lambda x: x[1],
+                        reverse=True
+                    )
+                    
+                    # Afișăm top 3 predicții
+                    for i, (name, prob) in enumerate(sorted_predictions[:3]):
+                        st.markdown(f"{i+1}. **{name}**: {prob*100:.2f}%")
+                    
+                    # Afișăm un grafic cu top 5 predicții (limitat la 600px lățime)
+                    st.subheader("Top 5 predicții:")
+                    top5_dict = {name: prob for name, prob in sorted_predictions[:5]}
+                    chart = st.bar_chart(top5_dict)
+                except Exception as e:
+                    st.error(f"Eroare la analizarea imaginii: {str(e)}")
+                    st.info("Verificați dacă modelul a fost încărcat corect și dacă imaginea este validă.")
+        else:
+            st.error("❌ Modelul nu este încărcat! Verificați calea către model.")
+            st.info("Puteți folosi modul demo pentru a testa interfața.")
 
 # Adăugare informații în sidebar
 st.sidebar.header("Despre aplicație")
