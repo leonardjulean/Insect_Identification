@@ -83,7 +83,7 @@ def predict_insect(model, img, class_names, img_size):
     return img_cv2, predicted_label, confidence, prediction
 
 # Titlu principal și descriere
-st.title("🐝 Recunoaștere Tipuri de Insecte")
+st.title("🐝 Recunoaștere Insecte")
 st.write("Încărcați o imagine pentru a identifica tipul de insectă")
 
 # Sidebar pentru încărcarea modelului
