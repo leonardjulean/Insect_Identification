@@ -10,7 +10,7 @@ import os
 
 # Configurarea paginii
 st.set_page_config(
-    page_title="Recunoaștere Tipuri de Insecte",
+    page_title="Recunoaștere Insecte",
     page_icon="🐝",
     layout="wide"
 )
